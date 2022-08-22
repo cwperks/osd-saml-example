@@ -1,0 +1,93 @@
+version: '3'
+services:
+  node-0.example.com:
+    image: opensearchproject/opensearch:2.2.0
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=node-0.example.com
+      - discovery.seed_hosts=node-0.example.com
+      - cluster.initial_master_nodes=node-0.example.com
+      - bootstrap.memory_lock=true # along with the memlock settings below, disables swapping
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m" # minimum and maximum Java heap size, recommend setting both to 50% of system RAM
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536 # maximum number of open files for the OpenSearch user, set to at least 65536 on modern systems
+        hard: 65536
+    ports:
+      - 9200:9200
+      - 9600:9600 # required for Performance Analyzer
+    networks:
+      - opensearch-net
+    volumes:
+      - ./config/opensearch.yml:/usr/share/opensearch/config/opensearch.yml
+      - ./certs/esnode.pem:/usr/share/opensearch/config/esnode.pem
+      - ./certs/esnode-key.pem:/usr/share/opensearch/config/esnode-key.pem
+      - ./certs/kirk.pem:/usr/share/opensearch/config/kirk.pem
+      - ./certs/kirk-key.pem:/usr/share/opensearch/config/kirk-key.pem
+      - ./certs/root-ca.pem:/usr/share/opensearch/config/root-ca.pem
+      - ./config/opensearch-security/metadata.xml:/usr/share/opensearch/config/opensearch-security/metadata.xml
+      - ./config/opensearch-security/config.yml:/usr/share/opensearch/config/opensearch-security/config.yml
+  node-1.example.com:
+    image: opensearchproject/opensearch:2.2.0
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=node-1.example.com
+      - discovery.seed_hosts=node-0.example.com,node-1.example.com
+      - cluster.initial_master_nodes=node-0.example.com,node-1.example.com
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - ./config/opensearch.yml:/usr/share/opensearch/config/opensearch.yml
+      - ./certs/esnode.pem:/usr/share/opensearch/config/esnode.pem
+      - ./certs/esnode-key.pem:/usr/share/opensearch/config/esnode-key.pem
+      - ./certs/root-ca.pem:/usr/share/opensearch/config/root-ca.pem
+      - ./config/opensearch-security/metadata.xml:/usr/share/opensearch/config/opensearch-security/metadata.xml
+      - ./config/opensearch-security/config.yml:/usr/share/opensearch/config/opensearch-security/config.yml
+    networks:
+      - opensearch-net
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.2.0
+    ports:
+      - 5601:5601
+    expose:
+      - "5601"
+    environment:
+      OPENSEARCH_HOSTS: '["https://node-0.example.com:9200"]'
+    networks:
+      - opensearch-net
+    volumes:
+      - ./certs/kirk.crt:/usr/share/opensearch-dashboards/config/kirk.crt
+      - ./certs/kirk-key.pem:/usr/share/opensearch-dashboards/config/kirk-key.pem
+      - ./certs/esnode.crt:/usr/share/opensearch-dashboards/config/esnode.crt
+      - ./certs/esnode-key.pem:/usr/share/opensearch-dashboards/config/esnode-key.pem
+      - ./certs/root-ca.pem:/usr/share/opensearch-dashboards/config/root-ca.pem
+      - ./config/opensearch_dashboards.yml:/usr/share/opensearch-dashboards/config/opensearch_dashboards.yml
+  testsamlidp_idp:
+    image: kristophjunge/test-saml-idp
+    environment:
+      SIMPLESAMLPHP_SP_ENTITY_ID: opensearch-dashboards
+      SIMPLESAMLPHP_SP_ASSERTION_CONSUMER_SERVICE: http://localhost:5601/_opendistro/_security/saml/acs
+      SIMPLESAMLPHP_SP_SINGLE_LOGOUT_SERVICE: http://localhost:5601/_opendistro/_security/saml/logout
+      SIMPLESAMLPHP_ADMIN_PASSWORD: test
+      SIMPLESAMLPHP_SECRET_SALT: salt
+    ports:
+    - "8080:8080"
+    - "8443:8443"
+    volumes:
+      - ./saml-demo/config/authsources.php:/var/www/simplesamlphp/config/authsources.php
+      - ./saml-demo/config-templates/authsources.php:/var/www/simplesamlphp/config-templates/authsources.php
+      - ./saml-demo/metadata/saml20-idp-hosted.php:/var/www/simplesamlphp/metadata/saml20-idp-hosted.php
+      - ./saml-demo/metadata-templates/saml20-idp-hosted.php:/var/www/simplesamlphp/metadata-templates/saml20-idp-hosted.php
+
+networks:
+  opensearch-net:
